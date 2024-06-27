@@ -56,3 +56,15 @@ def get_and_rename_files(folder_path, old_file_name, new_file_name):
 
     except Exception as e:
         print(f"An error occurred: {e}")
+
+
+def get_files_with_name(folder_path, file_name):
+    try:
+        # Walk through the directory
+        for dirpath, _, filenames in os.walk(folder_path):
+            if file_name in filenames:
+                file_path = os.path.join(dirpath, file_name)
+                print(f"Found file:{file_path}'")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")

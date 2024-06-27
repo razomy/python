@@ -1,0 +1,5 @@
+project
+    name python
+    description `
+Monorepo for all Python code.
+`
