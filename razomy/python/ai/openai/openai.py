@@ -1,0 +1,2 @@
+def openai():
+  print('yalllalal')
