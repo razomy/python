@@ -47,10 +47,10 @@ def get_and_rename_files(folder_path, old_file_name, new_file_name):
     """
     try:
         # Walk through the directory
-        for dirpath, _, filenames in os.walk(folder_path):
+        for dir_path, _, filenames in os.walk(folder_path):
             if old_file_name in filenames:
-                old_file_path = os.path.join(dirpath, old_file_name)
-                new_file_path = os.path.join(dirpath, new_file_name)
+                old_file_path = os.path.join(dir_path, old_file_name)
+                new_file_path = os.path.join(dir_path, new_file_name)
                 os.rename(old_file_path, new_file_path)
                 print(f"Renamed '{old_file_path}' to '{new_file_path}'")
 
@@ -61,9 +61,9 @@ def get_and_rename_files(folder_path, old_file_name, new_file_name):
 def get_files_with_name(folder_path, file_name):
     try:
         # Walk through the directory
-        for dirpath, _, filenames in os.walk(folder_path):
+        for dir_path, _, filenames in os.walk(folder_path):
             if file_name in filenames:
-                file_path = os.path.join(dirpath, file_name)
+                file_path = os.path.join(dir_path, file_name)
                 print(f"Found file:{file_path}'")
 
     except Exception as e:
