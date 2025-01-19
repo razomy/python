@@ -11,8 +11,9 @@ def copy_f(from_dir_path, to_dir_path):
   def copy(ctx: size.IterateCtx):
     print(ctx.file_path)
     new_file_path = ctx.file_path.replace(from_dir_path, to_dir_path)
-    if not os.path.isdir(new_file_path):
-      os.makedirs(new_file_path)
+    dir_path = os.path.dirname(new_file_path)
+    if not os.path.isdir(dir_path):
+      os.makedirs(dir_path)
     shutil.copy2(ctx.file_path, new_file_path)
 
   return copy
