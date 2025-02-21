@@ -12,6 +12,7 @@ razomy/python/ai/openai/openai.py
 razomy/python/ast/__init__.py
 razomy/python/ast/ast_lib.py
 razomy/python/ast/ast_lib_test.py
+razomy/python/audio/__init__.py
 razomy/python/cli/__init__.py
 razomy/python/cli/cli.py
 razomy/python/cli/bin/razomy.python
@@ -27,12 +28,16 @@ razomy/python/error/error_lib.py
 razomy/python/exeptions/__init__.py
 razomy/python/exeptions/exeption_lib.py
 razomy/python/fs/__init__.py
+razomy/python/fs/copy_lib.py
 razomy/python/fs/fs_lib.py
+razomy/python/fs/iterate_lib.py
+razomy/python/fs/size_lib.py
 razomy/python/git/__init__.py
 razomy/python/git/git_lib.py
 razomy/python/id/__init__.py
 razomy/python/id/id_lib.py
 razomy/python/image/__init__.py
+razomy/python/image/compress_lib.py
 razomy/python/image/image_lib.py
 razomy/python/image/fastapi/__init__.py
 razomy/python/image/fastapi/fastapi_image_lib.py
@@ -47,6 +52,7 @@ razomy/python/logging/log_lib.py
 razomy/python/logging/logger.py
 razomy/python/logging/logger_lib.py
 razomy/python/logging/logger_test.py
+razomy/python/logging/print_class.py
 razomy/python/logging/print_log_lib.py
 razomy/python/logging/stack_logger_lib.py
 razomy/python/primitive/__init__.py
