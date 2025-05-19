@@ -34,6 +34,7 @@ def iterate_bool[T:WithIterator and WithFilePath](dir_path, execute_bool: execut
       if execute_bool(ctx):
         continue
       else:
+        # todo: break is not processing child files check js impl
         break
 
   return ctx
