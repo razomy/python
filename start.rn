@@ -1,5 +1,5 @@
 project
-    name python
-    description `
+ name:python
+ description:`
 Monorepo for all Python code.
 `
