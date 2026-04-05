@@ -2,5 +2,5 @@ from setuptools import setup, find_packages
 
 setup(name='razomy',
       version='0.1',
-      scripts=['razomy/python/cli/bin/razomy.python'],
+      scripts=['razomy/cli/bin/razomy.python'],
       packages=find_packages())
