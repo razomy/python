@@ -3,3 +3,6 @@ project
  description:`
 Monorepo for all Python code.
 `
+test run python -m compileall .
+build run python -m build
+deploy run twine upload dist/*
