@@ -1,4 +1,5 @@
 from typing import Any, List, Dict, Callable
+from mlx_lm.sample_utils import make_sampler
 from mlx_lm import generate
 from copy import deepcopy
 
@@ -6,7 +7,6 @@ from razomy.ai_hugging_face.chat.logic.predict import models
 from razomy.cache.registry import global_cache_registry
 from razomy.ai_hugging_face.chat.log import request_log
 from razomy.ai_hugging_face.chat.predict import AIContext, create_chat_model
-
 
 @request_log
 def predict_ctx(ctx: AIContext, messages: List[Dict], tools_spec: List[Any] = None) -> dict[str, str] | Any:
@@ -34,7 +34,7 @@ def predict_ctx(ctx: AIContext, messages: List[Dict], tools_spec: List[Any] = No
 def predict_string(ctx: AIContext, prompt: str, opts=None) -> str:
     if opts is None:
         opts = {
-            "max_tokens": 4032,
+            "max_tokens": 65536,
             'verbose': False,
             'update_cache': True,
         }
@@ -45,23 +45,34 @@ def predict_string(ctx: AIContext, prompt: str, opts=None) -> str:
         temp_cache = deepcopy(ctx.cache)
 
     if opts['verbose']:
-        print('---s')
+        print('Request:---')
         print(prompt)
-        print('---e')
+        print('Model:---')
+
+    sampler = make_sampler(
+        temp=0.9,  # ВАЖНО: Убираем 0.0! Ставим 0.6 - 0.8. Это добавит случайности.
+        top_p=0.95,  # Ограничиваем "хвост" бредовых токенов.
+        min_p=0.05,  # Альтернатива top_p, отсекает слова с вероятностью ниже 5% от лучшего.
+        top_k=64,
+        # --- СЕКРЕТНОЕ ОРУЖИЕ MLX ОТ ЗАЦИКЛИВАНИЯ ---
+        xtc_probability=0.15,  # С вероятностью 15% модель ПРИНУДИТЕЛЬНО проигнорирует самый частый токен.
+        xtc_threshold=0.1  # Применяется только если токен имеет вероятность выше 10%.
+    )
 
     response = generate(
         model=ctx.model,
         tokenizer=ctx.tokenizer,
         prompt=prompt,
+        sampler=sampler,
         max_tokens=opts['max_tokens'],
         verbose=opts['verbose'],
         prompt_cache=temp_cache
     )
 
-    if opts['verbose']:
-        print('---s')
-        print(response)
-        print('---e')
+    # if opts['verbose']:
+    #     print('---s')
+    #     print(response)
+    #     print('---e')
     return response
 
 

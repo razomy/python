@@ -24,7 +24,7 @@ class CacheRegistry(object):
         self._cache[key] = data
         return key
 
-    def get(self, key: str, default: Any = None) -> Any:
+    def get[T](self, key: str, default: Any = None) -> T:
         """
         Retrieves data from the cache by its key.
         Returns the 'default' value (usually None) if the key doesn't exist.
