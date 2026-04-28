@@ -5,12 +5,11 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.live import Live
-
+import uuid
 from razomy.ai_hugging_face.chat.logic.predict import cache_predict_stream, models
 
 console = Console()
 bindings = KeyBindings()
-
 
 @bindings.add('escape', 'enter')
 def _(event):
@@ -100,13 +99,15 @@ def stream_ai_response(console: Console, stream_iterator: Iterable[dict]) -> str
 def main():
     """Точка входа и главный цикл чата."""
     session = PromptSession(erase_when_done=True)
-    chat_id = '1'
+    chat_id = str(uuid.uuid4())
     messages = []
 
     console.print(Panel(
-        "[bold cyan]✨ Чат запущен! ✨\n"
-        "Нажимай [Enter] для новой строки.\n"
-        "Нажимай [Ctrl+Enter] (или просто вводи сообщение) для ОТПРАВКИ.[/bold cyan]",
+        "Нажимай \\[Enter] для новой строки.\n"
+        "Нажимай \\[Opt+Enter] для ОТПРАВКИ.\n"
+        "Нажимай \\[Cntr+C] to stop.\n"
+        "write \"clear\" for a new chat.\n"
+        "write \"exit\" for an exit.",
         title="Welcome to the Chatbot",
         border_style="green"
     ))
@@ -121,6 +122,11 @@ def main():
         if user_input.lower() in ['выход', 'exit']:
             console.print(Panel("[bold cyan]Бот: Пока! 👋[/bold cyan]", title="Goodbye"))
             break
+        if user_input.lower() in ['clear']:
+            console.print(Panel("[bold cyan]Бот: Clearing! 👋[/bold cyan]", title="Clearing"))
+            chat_id = str(uuid.uuid4())
+            messages = []
+            continue
 
         messages.append({'role': 'user', 'content': user_input})
 
@@ -131,10 +137,11 @@ def main():
             stream_iterator = cache_predict_stream(chat_id, models['31_4'], messages)
             full_response = stream_ai_response(console, stream_iterator)
             messages.append({'role': 'model', 'content': full_response})
+        except KeyboardInterrupt:
+            # This triggers the exact millisecond you press Ctrl+C
+            print("\nBreak! Loop stopped gracefully.")
         except Exception as e:
             console.print(
                 Panel(f"[bold red]Ошибка при получении ответа:[/bold red] {e}", title="Error", border_style="red"))
-
-
 if __name__ == '__main__':
     main()
