@@ -3,7 +3,7 @@ from copy import deepcopy
 from mlx_lm import generate, stream_generate
 from mlx_lm.sample_utils import make_sampler
 from razomy.cache.registry import global_cache_registry
-from razomy.ai_hugging_face.chat.log import request_log
+from razomy.ai_hugging_face.chat.log import universal_log, universal_log
 from razomy.ai_hugging_face.chat.predict import cache_load, AIContext, create_chat_model
 from typing import Iterator, Dict, Any
 
@@ -20,7 +20,7 @@ models = {
 
 
 # --- Modified predict_ctx for Streaming ---
-@request_log
+@universal_log('Predict')
 def predict_ctx_stream(ctx, messages) -> Iterator[Dict[str, str]]:
     model, tokenizer = (ctx.model, ctx.tokenizer)
 
@@ -46,6 +46,7 @@ def predict_ctx_stream(ctx, messages) -> Iterator[Dict[str, str]]:
         prompt=prompt,
         sampler=sampler,
         max_tokens=65536,
+        prompt_cache=ctx.cache,
     )
 
     for chunk in stream:
@@ -53,7 +54,7 @@ def predict_ctx_stream(ctx, messages) -> Iterator[Dict[str, str]]:
         yield {"role": "assistant", "content": content}
 
 
-@request_log
+@universal_log('Predict')
 def predict_ctx(ctx, messages):
     model, tokenizer = (ctx.model, ctx.tokenizer)
 

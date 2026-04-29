@@ -6,9 +6,10 @@ from mlx_lm import load, stream_generate
 from mlx_lm.models.cache import make_prompt_cache
 
 from razomy.cache import global_cache_registry
-from razomy.ai_hugging_face.chat.log import load_log, request_log
+from razomy.ai_hugging_face.chat.log import universal_log
 
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
+
 
 @dataclass
 class AIContext:
@@ -16,20 +17,23 @@ class AIContext:
     tokenizer: Any
     cache: Any
 
+
 def create_chat_model(model_id: str):
     model, tokenizer = cache_load(model_id, model_id)
     return AIContext(model=model, tokenizer=tokenizer, cache=make_prompt_cache(model))
 
-@load_log
+
+@universal_log('Load')
 def load_model(model_id: str):
     return load(path_or_hf_repo=model_id)
+
 
 def cache_load(cache_id, model_id):
     cache_id, model = global_cache_registry.get_or_put(cache_id, lambda: load_model(model_id), True)
     return model
 
 
-@request_log
+@universal_log('Predict')
 def predict(model_id, messages, options=None):
     model, tokenizer = cache_load(model_id, model_id)
 

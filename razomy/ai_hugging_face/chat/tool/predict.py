@@ -5,10 +5,10 @@ from copy import deepcopy
 
 from razomy.ai_hugging_face.chat.logic.predict import models
 from razomy.cache.registry import global_cache_registry
-from razomy.ai_hugging_face.chat.log import request_log
+from razomy.ai_hugging_face.chat.log import universal_log
 from razomy.ai_hugging_face.chat.predict import AIContext, create_chat_model
 
-@request_log
+@universal_log('Predict')
 def predict_ctx(ctx: AIContext, messages: List[Dict], tools_spec: List[Any] = None) -> dict[str, str] | Any:
     prompt = ctx.tokenizer.apply_chat_template(
         messages,
@@ -30,7 +30,7 @@ def predict_ctx(ctx: AIContext, messages: List[Dict], tools_spec: List[Any] = No
     return {"role": "assistant", "content": response}
 
 
-@request_log
+@universal_log('Predict')
 def predict_string(ctx: AIContext, prompt: str, opts=None) -> str:
     if opts is None:
         opts = {
