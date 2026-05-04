@@ -1,3 +1,4 @@
+import queue
 from copy import deepcopy
 
 from mlx_lm import generate, stream_generate
@@ -6,6 +7,8 @@ from razomy.cache.registry import global_cache_registry
 from razomy.ai_hugging_face.chat.log import universal_log, universal_log
 from razomy.ai_hugging_face.chat.predict import cache_load, AIContext, create_chat_model
 from typing import Iterator, Dict, Any
+import multiprocessing
+import signal
 
 # doc https://ai.google.dev/gemma/docs/capabilities/thinking
 models = {
@@ -89,15 +92,119 @@ def cache_predict(cache_id, model_id, messages):
     response = predict_ctx(ctx, messages)
     return cache_id, response
 
+
 def cache_copy(cache_id, new_cache_id):
     cache_id, ctx = global_cache_registry.get[AIContext](cache_id, cache_id)
     new_ctx = AIContext(model=ctx.model, tokenizer=ctx.tokenizer, cache=deepcopy(ctx.cache))
     new_cache_id = global_cache_registry.put(new_cache_id, new_ctx)
     return new_cache_id
 
+
 def cache_predict_stream(cache_id: str, model_id: str, messages: list) -> Iterator[Dict[str, str]]:
     cache_id, ctx = global_cache_registry.get_or_put(cache_id, lambda: create_chat_model(model_id))
     return predict_ctx_stream(ctx, messages)
+
+
+class BackgroundStreamWorker:
+    def __init__(self, generator_func):
+        self.cmd_queue = multiprocessing.Queue()
+        self.res_queue = multiprocessing.Queue()
+        # Создаем флаг отмены
+        self.abort_event = multiprocessing.Event()
+
+        self.process = multiprocessing.Process(
+            target=self._worker_loop,
+            args=(generator_func, self.cmd_queue, self.res_queue, self.abort_event)
+        )
+        self.process.start()
+
+    @staticmethod
+    def _worker_loop(generator_func, cmd_queue, res_queue, abort_event):
+        # Воркер полностью игнорирует системный Ctrl+C, он слушает только наши команды
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        while True:
+            job = cmd_queue.get()
+            if job == "STOP":
+                break
+
+            args, kwargs = job
+
+            try:
+                # Создаем объект-генератор
+                gen = generator_func(*args, **kwargs)
+
+                # Итерируемся по нему
+                for chunk in gen:
+                    # На каждом шаге проверяем флаг отмены от главного процесса!
+                    if abort_event.is_set():
+                        # print("\n🛑 [Рабочий процесс] Получен сигнал отмены! Закрываем генератор...")
+                        gen.close()  # Безопасно завершаем работу генератора
+                        break  # Выходим из цикла выдачи
+
+                    res_queue.put(chunk)
+
+            except Exception as e:
+                res_queue.put(e)
+
+            # Обязательно кидаем маркер завершения (и при успехе, и при отмене)
+            res_queue.put(StopIteration)
+
+    def __call__(self, *args, **kwargs):
+        # 1. Перед новым запуском опускаем флаг отмены
+        self.abort_event.clear()
+
+        # 2. Очищаем очередь от мусора (если что-то застряло с прошлого раза)
+        while not self.res_queue.empty():
+            try:
+                self.res_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        # 3. Отправляем команду воркеру
+        self.cmd_queue.put((args, kwargs))
+
+        try:
+            while True:
+                try:
+                    chunk = self.res_queue.get(timeout=0.1)
+                    if chunk is StopIteration:
+                        break
+                    if isinstance(chunk, Exception):
+                        raise chunk
+                    yield chunk
+
+                except queue.Empty:
+                    if not self.process.is_alive():
+                        raise RuntimeError("Фоновый процесс внезапно умер (возможно OOM Killer)!")
+
+        except KeyboardInterrupt:
+            # ==========================================
+            # ЕСЛИ ПОЛЬЗОВАТЕЛЬ НАЖАЛ CTRL+C
+            # ==========================================
+            # print("\n⚠️ Прерываем текущий стрим...")
+
+            # Поднимаем флаг! Воркер увидит его на следующем yield и остановится.
+            self.abort_event.set()
+
+            # ОЧЕНЬ ВАЖНО: Мы должны вытаскивать все остатки из очереди,
+            # пока не встретим StopIteration. Это гарантирует, что воркер
+            # точно остановился и готов к следующему вызову.
+            while True:
+                try:
+                    junk = self.res_queue.get(timeout=0.5)
+                    if junk is StopIteration:
+                        break  # Воркер подтвердил остановку!
+                except queue.Empty:
+                    pass
+
+            raise  # Прокидываем KeyboardInterrupt дальше, чтобы остановить ваш код
+
+    def close(self):
+        if self.process.is_alive():
+            self.cmd_queue.put("STOP")
+            self.process.join()
+
 
 def test_predict():
     print("\n--- Testing Non-Streaming Predict ---")

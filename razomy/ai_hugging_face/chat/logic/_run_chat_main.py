@@ -9,7 +9,7 @@ from rich.live import Live
 import uuid
 
 from cache import global_cache_registry
-from razomy.ai_hugging_face.chat.logic.predict import cache_predict_stream, models
+from razomy.ai_hugging_face.chat.logic.predict import models, BackgroundStreamWorker, cache_predict_stream
 
 console = Console()
 bindings = KeyBindings()
@@ -92,9 +92,9 @@ def stream_ai_response(console: Console, stream_iterator: Iterable[dict]) -> str
                 else:
                     display_text = buffer
 
-                # Временно закрываем тег кода
-                if is_in_code:
-                    display_text += "\n```"
+                    # Временно закрываем тег кода
+                    if is_in_code:
+                        display_text += "\n```"
 
                 live.update(render_md(display_text))
     except KeyboardInterrupt:
@@ -111,10 +111,18 @@ def stream_ai_response(console: Console, stream_iterator: Iterable[dict]) -> str
 
 
 def main():
+    def save():
+       chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in messages])
+       filename = f"{chat_id}.md"
+       with open(filename, "w", encoding="utf-8") as f:
+           f.write(chat_text)
+
+       console.print(Panel(f"[bold green]File saved {filename}[/bold green]", title="Save"))
     """Точка входа и главный цикл чата."""
     session = PromptSession(erase_when_done=True)
     chat_id = str(generate_complex_id('chat'))
     messages = []
+    auto_save = False  # Флаг для автоматического сохранения
 
     console.print(Panel(
         "Нажимай \\[Enter] для новой строки.\n"
@@ -122,15 +130,20 @@ def main():
         "Нажимай \\[Cntr+C] to stop.\n"
         "write \"clear\" for a new chat.\n"
         "write \"raw\" to view chat as string.\n"
-        "write \"save\" to save chat to file.\n"
+        "write \"save\" to enable AUTO-SAVE.\n"
         "write \"exit\" for an exit.",
         title="Welcome to the Chatbot",
         border_style="green"
     ))
-
+    smart_stream = BackgroundStreamWorker(
+        generator_func=cache_predict_stream
+    )
     while True:
         console.rule("You:", align="left")
-        user_input = session.prompt("", multiline=True, key_bindings=bindings).strip()
+        try:
+            user_input = session.prompt("", multiline=True, key_bindings=bindings).strip()
+        except KeyboardInterrupt:
+            continue
 
         if not user_input:
             continue
@@ -157,12 +170,10 @@ def main():
             continue
 
         if cmd == 'save':
-            # Format chat history and save to file with random name
-            chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in messages])
-            filename = f"{chat_id}.md"
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write(chat_text)
-            console.print(Panel(f"[bold green]Chat saved to {filename}[/bold green]", title="File Saved"))
+            auto_save = not auto_save
+            status = "ENABLED" if auto_save else "DISABLED"
+            console.print(Panel(f"[bold green]Auto-save is now {status}[/bold green]", title="Save Mode"))
+            save()
             continue
             # --- END COMMAND HANDLING ---
 
@@ -172,11 +183,16 @@ def main():
         console.rule("Ai:", align="left")
 
         try:
-            stream_iterator = cache_predict_stream(chat_id, models['31_4'], messages)
+            stream_iterator = smart_stream(chat_id, models['31_4'], messages)
             full_response = stream_ai_response(console, stream_iterator)
             messages.append({'role': 'model', 'content': full_response})
         except Exception as e:
             console.print(
                 Panel(f"[bold red]Ошибка при получении ответа:[/bold red] {e}", title="Error", border_style="red"))
+
+            # --- АВТОСОХРАНЕНИЕ ---
+        if auto_save:
+            save()
+
 if __name__ == '__main__':
     main()
