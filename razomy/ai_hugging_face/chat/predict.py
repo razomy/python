@@ -17,6 +17,13 @@ class AIContext:
     tokenizer: Any
     cache: Any
 
+@dataclass
+class Opt:
+    temperature: float = .9
+    max_tokens: int = 65536
+    verbose: bool = False
+    update_cache: bool = True
+
 
 def create_chat_model(model_id: str):
     model, tokenizer = cache_load(model_id, model_id)

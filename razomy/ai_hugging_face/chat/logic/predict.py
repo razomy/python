@@ -1,11 +1,13 @@
 import queue
 from copy import deepcopy
+from dataclasses import asdict
 
 from mlx_lm import generate, stream_generate
 from mlx_lm.sample_utils import make_sampler
+
 from razomy.cache.registry import global_cache_registry
 from razomy.ai_hugging_face.chat.log import universal_log, universal_log
-from razomy.ai_hugging_face.chat.predict import cache_load, AIContext, create_chat_model
+from razomy.ai_hugging_face.chat.predict import cache_load, AIContext, create_chat_model, Opt
 from typing import Iterator, Dict, Any
 import multiprocessing
 import signal
@@ -24,7 +26,11 @@ models = {
 
 # --- Modified predict_ctx for Streaming ---
 @universal_log('Predict')
-def predict_ctx_stream(ctx, messages) -> Iterator[Dict[str, str]]:
+def predict_ctx_stream(ctx, messages, opts=None) -> Iterator[Dict[str, str]]:
+    if opts is None:
+        opts = Opt()
+    else:
+        opts = Opt(**opts)
     model, tokenizer = (ctx.model, ctx.tokenizer)
 
     prompt = tokenizer.apply_chat_template(
@@ -34,7 +40,7 @@ def predict_ctx_stream(ctx, messages) -> Iterator[Dict[str, str]]:
         enable_thinking=False
     )
     sampler = make_sampler(
-        temp=0.9,  # ВАЖНО: Убираем 0.0! Ставим 0.6 - 0.8. Это добавит случайности.
+        temp=opts.temperature,  # ВАЖНО: Убираем 0.0! Ставим 0.6 - 0.8. Это добавит случайности.
         top_p=0.95,  # Ограничиваем "хвост" бредовых токенов.
         min_p=0.05,  # Альтернатива top_p, отсекает слова с вероятностью ниже 5% от лучшего.
         top_k=64,
@@ -42,14 +48,18 @@ def predict_ctx_stream(ctx, messages) -> Iterator[Dict[str, str]]:
         xtc_probability=0.15,  # С вероятностью 15% модель ПРИНУДИТЕЛЬНО проигнорирует самый частый токен.
         xtc_threshold=0.1  # Применяется только если токен имеет вероятность выше 10%.
     )
+    if opts.update_cache:
+        temp_cache = ctx.cache
+    else:
+        temp_cache = deepcopy(ctx.cache)
 
     stream = stream_generate(
         model,
         tokenizer,
         prompt=prompt,
         sampler=sampler,
-        max_tokens=65536,
-        prompt_cache=ctx.cache,
+        max_tokens=opts.max_tokens,
+        prompt_cache=temp_cache,
     )
 
     for chunk in stream:
@@ -100,9 +110,78 @@ def cache_copy(cache_id, new_cache_id):
     return new_cache_id
 
 
-def cache_predict_stream(cache_id: str, model_id: str, messages: list) -> Iterator[Dict[str, str]]:
+def cache_predict_stream(cache_id: str, model_id: str, messages: list, opts=None) -> Iterator[Dict[str, str]]:
     cache_id, ctx = global_cache_registry.get_or_put(cache_id, lambda: create_chat_model(model_id))
-    return predict_ctx_stream(ctx, messages)
+    return predict_ctx_stream(ctx, messages, opts)
+
+
+def summarize_history(chat_id, model_id, messages, fn) -> str:
+    """Compresses message history into a detailed summary by iterating from the end."""
+
+    # 1. Find the last summary by iterating backwards
+    last_summary_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get('is_summary'):
+            last_summary_idx = i
+            break
+
+            # 2. Separate the existing summary from the new content
+    previous_summary = ""
+    if last_summary_idx != -1:
+        previous_summary = messages[last_summary_idx].get('content', '')
+        # Everything AFTER the last summary needs to be processed
+        to_summarize_messages = messages[last_summary_idx + 1:]
+    else:
+        # No summary found, process everything
+        to_summarize_messages = messages
+
+    if not to_summarize_messages:
+        return previous_summary
+
+        # Format new messages into a block
+    new_history_text = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize_messages])
+
+    # 3. Prompt Construction
+    if previous_summary:
+        # MERGE MODE: Combine old facts with new events
+        summary_prompt = (
+            f"You are a memory management system. Update the 'Existing Summary' with 'New Conversation' details.\n\n"
+            f"EXISTING SUMMARY:\n{previous_summary}\n\n"
+            f"NEW CONVERSATION:\n{new_history_text}\n\n"
+            f"TASK:\n"
+            f"1. Merge new facts into the existing summary while maintaining a granular, bulleted format.\n"
+            f"2. Update existing points if the user has changed their mind or requirements (pivot points).\n"
+            f"3. Remove redundant details that are no longer relevant, but keep critical constraints.\n"
+            f"4. Preserve specific terminology, direct quotes, and nuanced requirements.\n"
+            f"5. Do not summarize the summary; provide the full, updated state of facts."
+        )
+    else:
+    # INITIAL MODE: Create the first summary
+        summary_prompt = (
+            f"Perform a high-fidelity extraction of facts and context from the following conversation. "
+            f"Avoid over-generalization and 'averaging' the content. "
+            f"Instead, identify and preserve:\n"
+            f"- Specific nuances, subtle requirements, and unique constraints.\n"
+            f"- Key pivot points in the conversation (where the direction or opinion changed).\n"
+            f"- Explicit and implicit commitments or concerns.\n"
+            f"- Any specific terminology or phrasing used by the participants that carries weight.\n\n"
+            f"Requirements:\n"
+            f"- Be granular: prefer multiple specific points over one vague general statement.\n"
+            f"- Do not omit details for the sake of brevity if those details are critical to the meaning.\n"
+            f"- Use direct quotes for nuanced expressions to avoid loss of meaning.\n\n"
+            f"CONVERSATION:\n{new_history_text}"
+        )
+
+        # 4. Generate response
+    temp_messages = [{"role": "user", "content": summary_prompt}]
+    s = fn(chat_id, model_id, temp_messages, asdict(Opt(temperature=.3)))
+
+    res = ''
+    for chunk in s:
+        content = chunk.get('content', '')
+        if content:
+            res += content
+    return res
 
 
 class BackgroundStreamWorker:

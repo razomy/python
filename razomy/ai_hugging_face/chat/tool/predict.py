@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, List, Dict, Callable
 from mlx_lm.sample_utils import make_sampler
 from mlx_lm import generate
@@ -6,7 +7,8 @@ from copy import deepcopy
 from razomy.ai_hugging_face.chat.logic.predict import models
 from razomy.cache.registry import global_cache_registry
 from razomy.ai_hugging_face.chat.log import universal_log
-from razomy.ai_hugging_face.chat.predict import AIContext, create_chat_model
+from razomy.ai_hugging_face.chat.predict import AIContext, create_chat_model, Opt
+
 
 @universal_log('Predict')
 def predict_ctx(ctx: AIContext, messages: List[Dict], tools_spec: List[Any] = None) -> dict[str, str] | Any:
@@ -30,27 +32,27 @@ def predict_ctx(ctx: AIContext, messages: List[Dict], tools_spec: List[Any] = No
     return {"role": "assistant", "content": response}
 
 
-@universal_log('Predict')
-def predict_string(ctx: AIContext, prompt: str, opts=None) -> str:
-    if opts is None:
-        opts = {
-            "max_tokens": 65536,
-            'verbose': False,
-            'update_cache': True,
-        }
 
-    if opts['update_cache']:
+
+@universal_log('Predict')
+def predict_string(ctx: AIContext, prompt: str, opts = None) -> str:
+    if opts is None:
+        opts = Opt()
+    else:
+        opts = Opt(**opts)
+
+    if opts.update_cache:
         temp_cache = ctx.cache
     else:
         temp_cache = deepcopy(ctx.cache)
 
-    if opts['verbose']:
+    if opts.verbose:
         print('Request:---')
         print(prompt)
         print('Model:---')
 
     sampler = make_sampler(
-        temp=0.9,  # ВАЖНО: Убираем 0.0! Ставим 0.6 - 0.8. Это добавит случайности.
+        temp=opts.temperature,  # ВАЖНО: Убираем 0.0! Ставим 0.6 - 0.8. Это добавит случайности.
         top_p=0.95,  # Ограничиваем "хвост" бредовых токенов.
         min_p=0.05,  # Альтернатива top_p, отсекает слова с вероятностью ниже 5% от лучшего.
         top_k=64,
@@ -64,8 +66,8 @@ def predict_string(ctx: AIContext, prompt: str, opts=None) -> str:
         tokenizer=ctx.tokenizer,
         prompt=prompt,
         sampler=sampler,
-        max_tokens=opts['max_tokens'],
-        verbose=opts['verbose'],
+        max_tokens=opts.max_tokens,
+        verbose=opts.verbose,
         prompt_cache=temp_cache
     )
 
@@ -112,6 +114,7 @@ def try_message_tool_mut(ctx: AIContext, messages: List[Dict], tools: Dict[str, 
         messages[-1] = res
         return True
     return False
+
 
 def test_predict():
     model_id = models['2_4']
@@ -187,18 +190,21 @@ def test_cache_predict_text():
     messages = [{"role": "user", "content": "Multiply 12234585 and 48838483920. And say answer."}]
     print(cache_predict("1", models['2_4'], messages, tools_spec))
 
+
 def test_predict_cache_string():
-    cache_id= "1"
-    prompt ="""
+    cache_id = "1"
+    prompt = """
 <bos><|turn>system
 <|tool>declaration:multiply{description:<|"|>A function that multiplies two numbers<|"|>,parameters:{properties:{a:{description:<|"|>The first number to multiply<|"|>,type:<|"|>NUMBER<|"|>},b:{description:<|"|>The second number to multiply<|"|>,type:<|"|>NUMBER<|"|>}},required:[<|"|>a<|"|>,<|"|>b<|"|>],type:<|"|>OBJECT<|"|>}}<tool|><turn|>
 <|turn>user
 Multiply 12234585 and 48838483920. And say answer.<turn|>
 <|turn>model
     """.strip()
-    cache_id, result = predict_cache_string(cache_id, models['2_4'], prompt, {"verbose":True, "update_cache":True, "max_tokens":500})
+    cache_id, result = predict_cache_string(cache_id, models['2_4'], prompt,
+                                            {"verbose": True, "update_cache": True, "max_tokens": 500})
     prompt += result
     prompt += '<|tool_response>response:multiply{value:597518582790373200}<tool_response|>'
-    cache_id, result = predict_cache_string(cache_id, models['2_4'], prompt, {"verbose":True, "update_cache":True, "max_tokens":500})
+    cache_id, result = predict_cache_string(cache_id, models['2_4'], prompt,
+                                            {"verbose": True, "update_cache": True, "max_tokens": 500})
     prompt += result
     print(prompt)
