@@ -198,7 +198,8 @@ def main():
     messages = []
     auto_save = False  # Флаг для автоматического сохранения
 
-    console.print(Panel(
+    def help():
+        return Panel(
         "Нажимай \\[Enter] для новой строки.\n"
         "Нажимай \\[Opt+Enter] для ОТПРАВКИ.\n"
         "Нажимай \\[Cntr+C] to stop.\n"
@@ -207,10 +208,12 @@ def main():
         "write \"raw\" to view chat as string.\n"
         "write \"save\" to enable AUTO-SAVE.\n"
         "write \"compress\" save chat.\n"
+        "write \"help\" to see this message.\n"
         "write \"exit\" for an exit.",
         title="Welcome to the Chatbot",
         border_style="green"
-    ))
+    )
+    console.print(help())
     smart_stream = BackgroundStreamWorker(
         generator_func=cache_predict_stream
     )
@@ -238,6 +241,10 @@ def main():
             global_cache_registry.delete(chat_id)
             chat_id = str(generate_complex_id('chat'))
             messages = []
+            continue
+
+        if cmd == 'help':
+            console.print(help())
             continue
 
         if cmd == 'raw':

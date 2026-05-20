@@ -32,6 +32,44 @@ def predict_ctx(ctx: AIContext, messages: List[Dict], tools_spec: List[Any] = No
     return {"role": "assistant", "content": response}
 
 
+def print_prompt(prompt):
+    class c:
+        # Базовые модификаторы
+        RESET = '\033[0m'
+        BOLD = '\033[1m'
+
+        # Палитра 256 цветов (ВЫСОКИЙ КОНТРАСТ для БЕЛОГО фона)
+        GRAY_SYSTEM = '\033[38;5;238m'  # Темно-серый (Системные промпты)
+        GRAY_BOUND = '\033[38;5;244m'  # Средне-серый (Границы токенов)
+        BLUE = '\033[38;5;25m'  # Глубокий синий (Пользователь)
+        PURPLE = '\033[38;5;90m'  # Темно-фиолетовый (Модель)
+        ORANGE = '\033[38;5;130m'  # Жженая бронза/Кирпичный (Инструменты)
+        GREEN = '\033[38;5;28m'  # Темно-зеленый (Ответ инструментов)
+        TEAL = '\033[38;5;30m'  # Глубокий изумрудный/Teal (Размышления)
+        BROWN = '\033[38;5;94m'  # Темно-коричневый (Контекст/RAG)
+        RED = '\033[38;5;124m'  # Темно-красный (Ошибки)
+
+    prnt = prompt
+
+    # Словарь всех возможных тегов
+    tags_colors = {
+        # 1. Основные роли
+        '<|turn>system': c.GRAY_SYSTEM,
+        '<|turn>user': c.BLUE,
+        '<|turn>model': c.PURPLE,
+
+        # 2. Работа с инструментами (Function Calling)
+        '<|turn>tool': c.ORANGE,
+        '<|tool_call>call': c.BROWN,
+        '<|tool_response>response': c.GREEN,
+    }
+
+    # Применяем цвета (Тег будет жирным и цветным)
+    for tag, color in tags_colors.items():
+        # Заменяем тег на его цветную версию
+        prnt = prnt.replace(tag, f"{c.BOLD}{color}{tag}{c.RESET}")
+
+    print(prnt)
 
 
 @universal_log('Predict')
@@ -48,7 +86,7 @@ def predict_string(ctx: AIContext, prompt: str, opts = None) -> str:
 
     if opts.verbose:
         print('Request:---')
-        print(prompt)
+        print_prompt(prompt)
         print('Model:---')
 
     sampler = make_sampler(
