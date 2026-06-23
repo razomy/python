@@ -195,6 +195,7 @@ def main():
     """Точка входа и главный цикл чата."""
     session = PromptSession(erase_when_done=True)
     chat_id = str(generate_complex_id('chat'))
+    model_id = '31_4'
     messages = []
     auto_save = False  # Флаг для автоматического сохранения
 
@@ -210,7 +211,7 @@ def main():
         "write \"compress\" save chat.\n"
         "write \"help\" to see this message.\n"
         "write \"exit\" for an exit.",
-        title="Welcome to the Chatbot",
+        title=f"Welcome to the Chatbot({model_id})",
         border_style="green"
     )
     console.print(help())
@@ -293,7 +294,7 @@ def main():
 
         # АВТО-КОМПРЕСС: Если сообщений больше 20, сжимаем
         if len(active_messages) > 30 or cmd == 'compress':
-            messages = perform_compression(models['31_4'], messages, smart_stream)
+            messages = perform_compression(models[model_id], messages, smart_stream)
             chat_id = str(generate_complex_id('chat'))
             active_messages = get_active_context(messages)
             if cmd == 'compress':
@@ -301,7 +302,7 @@ def main():
 
         try:
             console.rule("Ai:", align="left")
-            stream_iterator = smart_stream(chat_id, models['31_4'], active_messages)
+            stream_iterator = smart_stream(chat_id, models[model_id], active_messages)
             full_response = stream_ai_response(console, stream_iterator)
             messages.append({'role': 'model', 'content': full_response})
         except Exception as e:
