@@ -210,7 +210,8 @@ def main():
         "write \"save\" to enable AUTO-SAVE.\n"
         "write \"compress\" save chat.\n"
         "write \"help\" to see this message.\n"
-        "write \"exit\" for an exit.",
+        "write \"exit\" for an exit.\n"
+        f"chat_id: {chat_id}",
         title=f"Welcome to the Chatbot({model_id})",
         border_style="green"
     )
