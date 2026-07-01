@@ -1,5 +1,7 @@
 import time
 from typing import Iterable
+
+import numpy as np
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit import PromptSession
 from rich.console import Console
@@ -10,12 +12,14 @@ from rich.text import Text
 import uuid
 import subprocess
 
+
 def check_appearance():
     """Checks DARK/LIGHT mode of macos."""
     cmd = 'defaults read -g AppleInterfaceStyle'
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE, shell=True)
     return bool(p.communicate()[0])
+
 
 from ai_hugging_face.chat.predict import create_chat_model
 from cache import global_cache_registry
@@ -28,6 +32,7 @@ console = Console()
 bindings = KeyBindings()
 
 isDark = check_appearance()
+
 
 @bindings.add('escape', 'enter')
 def _(event):
@@ -59,7 +64,7 @@ def render_user_text(text: str):
     return Text(text, style="")
 
 
-def generate_complex_id(prefix="item"):
+def generate_complex_id(prefix="chats/chat"):
     timestamp = int(time.time())
     # Берем первые 8 символов от полноценного UUID4
     unique_part = str(uuid.uuid4())[:8]
@@ -177,50 +182,50 @@ def main():
             return json.load(f)
 
     def perform_compression(model_id, messages, fn):
-        console.print(Panel("Auto-compressing...", title="System"))
-        tail = messages[-3:]
-        history_to_compress = messages[:-3]
+        tail = messages[-6:]
+        history_to_compress = messages[:-6]
 
-        summary_text = summarize_history(None, model_id, history_to_compress, fn)
+        summary_text = summarize_history(chat_id, model_id, history_to_compress, fn)
 
         new_messages = history_to_compress
-        new_messages.append({
-            "role": "system",
-            "content": f"CONVERSATION SUMMARY: {summary_text}",
-            "is_summary": True
-        })
+        new_messages.append(summary_text)
         new_messages.extend(tail)
         return new_messages
 
     """Точка входа и главный цикл чата."""
     session = PromptSession(erase_when_done=True)
-    chat_id = str(generate_complex_id('chat'))
+    chat_id = str(generate_complex_id())
     model_id = '31_4'
     messages = []
-    auto_save = False  # Флаг для автоматического сохранения
+    auto_save = True  # Флаг для автоматического сохранения
 
     def help():
         return Panel(
-        "Нажимай \\[Enter] для новой строки.\n"
-        "Нажимай \\[Opt+Enter] для ОТПРАВКИ.\n"
-        "Нажимай \\[Cntr+C] to stop.\n"
-        "write load <filename>': Load a chat\n"
-        "write \"clear\" for a new chat.\n"
-        "write \"raw\" to view chat as string.\n"
-        "write \"save\" to enable AUTO-SAVE.\n"
-        "write \"compress\" save chat.\n"
-        "write \"help\" to see this message.\n"
-        "write \"exit\" for an exit.\n"
-        f"chat_id: {chat_id}",
-        title=f"Welcome to the Chatbot({model_id})",
-        border_style="green"
-    )
+            "Нажимай \\[Enter] для новой строки.\n"
+            "Нажимай \\[Opt+Enter] для ОТПРАВКИ.\n"
+            "Нажимай \\[Cntr+C] to stop.\n"
+            "write load <filename>': Load a chat\n"
+            "write \"clear\" for a new chat.\n"
+            "write \"clone\" to copy chat as string.\n"
+            "write \"raw\" to view chat as string.\n"
+            "write \"save\" to enable AUTO-SAVE.\n"
+            "write \"compress\" save chat.\n"
+            "write \"help\" to see this message.\n"
+            "write \"exit\" for an exit.\n"
+            f"chat_id: {chat_id}\n"
+            "Make sure to increase RAM`sudo sysctl iogpu.wired_limit_mb=57344`",
+            title=f"Welcome to the Chatbot({model_id})",
+            border_style="green"
+        )
+
     console.print(help())
     smart_stream = BackgroundStreamWorker(
         generator_func=cache_predict_stream
     )
     while True:
-        console.rule("You:", align="left")
+        active_messages = get_active_context(messages)
+        count_token = np.sum([len(m['content']) for m in active_messages])
+        console.rule(f"{count_token:,}/You:", align="left")
         try:
             user_input = session.prompt("", multiline=True, key_bindings=bindings).strip()
         except KeyboardInterrupt:
@@ -235,18 +240,24 @@ def main():
         if cmd in ['выход', 'exit']:
             console.print(Panel("[bold cyan]Бот: Пока! 👋[/bold cyan]", title="Goodbye"))
             if auto_save: save_chat(chat_id, messages)
+            smart_stream.clear_cache(chat_id)
             smart_stream.close()
             exit(0)
 
         if cmd == 'clear':
             console.print(Panel("[bold cyan]Бот: Clearing! 👋[/bold cyan]", title="Clearing"))
-            global_cache_registry.delete(chat_id)
-            chat_id = str(generate_complex_id('chat'))
+            smart_stream.clear_cache(chat_id)
+            chat_id = str(generate_complex_id())
             messages = []
             continue
 
         if cmd == 'help':
             console.print(help())
+            continue
+
+        if cmd == 'clone':
+            chat_id = str(generate_complex_id())
+            console.print(Panel(f"[bold cyan]Бот: Chat Cloned {chat_id}! 👋[/bold cyan]", title="Cloned"))
             continue
 
         if cmd == 'raw':
@@ -286,31 +297,31 @@ def main():
             if auto_save: save_chat(chat_id, messages)
             continue
 
-            # --- ЛОГИКА ОБЩЕНИЯ ---
+        # --- ЛОГИКА ОБЩЕНИЯ ---
         messages.append({'role': 'user', 'content': user_input})
         # Используем render_user_text вместо render_md, чтобы избежать нежелательного форматирования
         console.print(render_user_text(user_input))
+        if auto_save: save_chat(chat_id, messages)
 
-        active_messages = get_active_context(messages)
-
-        # АВТО-КОМПРЕСС: Если сообщений больше 20, сжимаем
-        if len(active_messages) > 30 or cmd == 'compress':
+        if count_token > (5 * 15_000) or cmd == 'compress':
+            console.rule(f"+{len(user_input):,}={count_token:,}/System:", align="left")
+            console.print(Panel(f"Auto-compressing new {count_token:,} tokens...", title="System"))
+            smart_stream.clear_cache(chat_id)  # remove main cache
             messages = perform_compression(models[model_id], messages, smart_stream)
-            chat_id = str(generate_complex_id('chat'))
+            smart_stream.clear_cache(chat_id)  # remove compression cache 2
             active_messages = get_active_context(messages)
+            if auto_save: save_chat(chat_id, messages)
             if cmd == 'compress':
                 continue
 
         try:
-            console.rule("Ai:", align="left")
+            console.rule(f"+{len(user_input):,}={count_token:,}/Ai:", align="left")
             stream_iterator = smart_stream(chat_id, models[model_id], active_messages)
             full_response = stream_ai_response(console, stream_iterator)
             messages.append({'role': 'model', 'content': full_response})
+            if auto_save: save_chat(chat_id, messages)
         except Exception as e:
             console.print(Panel(f"Error: {e}", border_style="red"))
-
-        if auto_save:
-            save_chat(chat_id, messages)
 
 
 if __name__ == '__main__':

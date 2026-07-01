@@ -1,9 +1,11 @@
 import queue
+import threading
 from copy import deepcopy
 from dataclasses import asdict
 
 from mlx_lm import generate, stream_generate
 from mlx_lm.sample_utils import make_sampler
+from pyarrow.lib import Queue
 
 from razomy.cache.registry import global_cache_registry
 from razomy.ai_hugging_face.chat.log import universal_log, universal_log
@@ -115,10 +117,7 @@ def cache_predict_stream(cache_id: str, model_id: str, messages: list, opts=None
     return predict_ctx_stream(ctx, messages, opts)
 
 
-def summarize_history(chat_id, model_id, messages, fn) -> str:
-    """Compresses message history into a detailed summary by iterating from the end."""
-
-    # 1. Find the last summary by iterating backwards
+def get_prev_report_and_to_compress(messages):
     last_summary_idx = -1
     for i in range(len(messages) - 1, -1, -1):
         if messages[i].get('is_summary'):
@@ -134,47 +133,33 @@ def summarize_history(chat_id, model_id, messages, fn) -> str:
     else:
         # No summary found, process everything
         to_summarize_messages = messages
+    return previous_summary, to_summarize_messages
 
-    if not to_summarize_messages:
-        return previous_summary
 
-        # Format new messages into a block
-    new_history_text = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize_messages])
+def compress_history(chat_id, model_id, new_history_text, fn) -> str:
+    init_summary_prompt = (
+        f"Perform a high-fidelity extraction of facts and context from the following conversation. "
+        f"Avoid over-generalization and 'averaging' the content. "
+        f"Instead, identify and preserve:\n"
+        f"- Specific nuances, subtle requirements, and unique constraints and logic.\n"
+        f"- Key pivot points in the conversation (where the direction or opinion changed).\n"
+        f"- Explicit and implicit commitments or concerns.\n"
+        f"- Any specific terminology or phrasing used by the participants that carries weight.\n"
+        f"- Add Completely final code and complex logic.\n\n"
+        f"Requirements:\n"
+        f"- Be granular: prefer multiple specific points over one vague general statement.\n"
+        f"- Do not omit details for the sake of brevity if those details are critical to the meaning.\n"
+        f"- Use direct quotes for nuanced expressions to avoid loss of meaning.\n\n"
+    )
 
-    # 3. Prompt Construction
-    if previous_summary:
-        # MERGE MODE: Combine old facts with new events
-        summary_prompt = (
-            f"You are a memory management system. Update the 'Existing Summary' with 'New Conversation' details.\n\n"
-            f"EXISTING SUMMARY:\n{previous_summary}\n\n"
-            f"NEW CONVERSATION:\n{new_history_text}\n\n"
-            f"TASK:\n"
-            f"1. Merge new facts into the existing summary while maintaining a granular, bulleted format.\n"
-            f"2. Update existing points if the user has changed their mind or requirements (pivot points).\n"
-            f"3. Remove redundant details that are no longer relevant, but keep critical constraints.\n"
-            f"4. Preserve specific terminology, direct quotes, and nuanced requirements.\n"
-            f"5. Do not summarize the summary; provide the full, updated state of facts."
-        )
-    else:
     # INITIAL MODE: Create the first summary
-        summary_prompt = (
-            f"Perform a high-fidelity extraction of facts and context from the following conversation. "
-            f"Avoid over-generalization and 'averaging' the content. "
-            f"Instead, identify and preserve:\n"
-            f"- Specific nuances, subtle requirements, and unique constraints.\n"
-            f"- Key pivot points in the conversation (where the direction or opinion changed).\n"
-            f"- Explicit and implicit commitments or concerns.\n"
-            f"- Any specific terminology or phrasing used by the participants that carries weight.\n\n"
-            f"Requirements:\n"
-            f"- Be granular: prefer multiple specific points over one vague general statement.\n"
-            f"- Do not omit details for the sake of brevity if those details are critical to the meaning.\n"
-            f"- Use direct quotes for nuanced expressions to avoid loss of meaning.\n\n"
+    summary_prompt = (
+            init_summary_prompt +
             f"CONVERSATION:\n{new_history_text}"
-        )
+    )
 
-        # 4. Generate response
     temp_messages = [{"role": "user", "content": summary_prompt}]
-    s = fn(chat_id, model_id, temp_messages, asdict(Opt(temperature=.3)))
+    s = fn(chat_id, model_id, temp_messages, asdict(Opt(temperature=.4)))
 
     res = ''
     for chunk in s:
@@ -184,21 +169,87 @@ def summarize_history(chat_id, model_id, messages, fn) -> str:
     return res
 
 
+def unite_history(chat_id, model_id, previous_summary, compressed, fn) -> str:
+    summary_prompt = (
+        f"You are a memory management system.\n"
+        "Merge the 'Existing Report' with the 'New Report' details and return it as single report.\n"
+        f"1. Merge new facts into the existing storage while maintaining a granular, bulleted format.\n"
+        f"2. Update existing points if the user has changed their mind or requirements (pivot points).\n"
+        f"3. Preserve specific nuances, terminology, direct quotes, and nuanced requirements.\n"
+        f"4. Key Preserve pivot points in the conversation (where the direction or opinion changed).\n"
+        f"5. Explicit and implicit commitments or concerns.\n"
+        f"6. Update final version code(context) and complex logic.\n"
+        f"7. Remove redundant details that are no longer relevant, but keep critical constraints.\n"
+        f"8. Do not summarize; provide the full, updated state of facts."
+        f"EXISTING REPORT:\n{previous_summary}\n\n"
+        f"NEW REPORT:\n{compressed}\n\n"
+    )
+
+    temp_messages = [{"role": "user", "content": summary_prompt}]
+    s = fn(chat_id, model_id, temp_messages, asdict(Opt(temperature=.4)))
+
+    res = ''
+    for chunk in s:
+        content = chunk.get('content', '')
+        if content:
+            res += content
+    return res
+
+
+def summarize_history(chat_id, model_id, messages, fn):
+    previous_summary, to_summarize_messages = get_prev_report_and_to_compress(messages)
+
+    if not to_summarize_messages:
+        return previous_summary
+
+        # Format new messages into a block
+    new_history_text = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize_messages])
+    compressed = compress_history(chat_id, model_id, new_history_text, fn)
+
+    if not previous_summary:
+        return {
+            "role": "system",
+            "content": f"{compressed}",
+            "is_summary": True
+        }
+    unied = unite_history(chat_id, model_id, previous_summary, compressed, fn)
+    return {
+        "role": "system",
+        "content": f"{unied}",
+        "is_summary": True
+    }
+
+
 class BackgroundStreamWorker:
-    def __init__(self, generator_func):
+    def __init__(self, generator_func, use_multiprocessing=True):
+        self.generator_func = generator_func
         self.cmd_queue = multiprocessing.Queue()
         self.res_queue = multiprocessing.Queue()
         # Создаем флаг отмены
         self.abort_event = multiprocessing.Event()
 
-        self.process = multiprocessing.Process(
-            target=self._worker_loop,
-            args=(generator_func, self.cmd_queue, self.res_queue, self.abort_event)
-        )
+        if use_multiprocessing:
+            # Создаем отдельный процесс (изолированная память, свой GIL)
+            self.process = multiprocessing.Process(
+                target=self._worker_loop,
+                args=(generator_func, self.cmd_queue, self.res_queue, self.abort_event)
+            )
+            print("Запущено в отдельном процессе")
+        else:
+            # Создаем поток (общая память, общий GIL)
+            self.process = threading.Thread(
+                target=self._worker_loop,
+                args=(generator_func, self.cmd_queue, self.res_queue, self.abort_event)
+            )
+            print("Запущено в потоке (текущий процесс)")
+
         self.process.start()
 
+    def clear_cache(self, chat_id):
+        self.cmd_queue.put({"type": "CLEAR_CACHE", "chat_id": chat_id})
+
     @staticmethod
-    def _worker_loop(generator_func, cmd_queue, res_queue, abort_event):
+    def _worker_loop(generator_func, cmd_queue: Queue, res_queue: Queue, abort_event):
         # Воркер полностью игнорирует системный Ctrl+C, он слушает только наши команды
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
@@ -206,7 +257,11 @@ class BackgroundStreamWorker:
             job = cmd_queue.get()
             if job == "STOP":
                 break
-
+            # Проверяем, не команда ли это на очистку
+            if isinstance(job, dict) and job.get("type") == "CLEAR_CACHE":
+                chat_id = job.get("chat_id")
+                global_cache_registry.delete(chat_id)
+                continue
             args, kwargs = job
 
             try:
