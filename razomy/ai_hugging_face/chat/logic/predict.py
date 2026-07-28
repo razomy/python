@@ -16,7 +16,7 @@ import signal
 
 # doc https://ai.google.dev/gemma/docs/capabilities/thinking
 models = {
-    # '31_16': 'mlx-community/gemma-4-31b-it-bf16', too large for this mac
+    # '31_16': 'mlx-community/gemma-4-31b-it-bf16',# too large for this mac
     '31_8': 'mlx-community/gemma-4-31b-it-8bit',
     '31_4': 'mlx-community/gemma-4-31b-it-4bit',
     # '26_4': 'mlx-community/gemma-4-26b-a4b-4bit', run error
@@ -125,9 +125,13 @@ def get_prev_report_and_to_compress(messages):
             break
 
             # 2. Separate the existing summary from the new content
-    previous_summary = ""
+    previous_summary = {
+            "role": "system",
+            "content": f"",
+            "is_summary": True
+        }
     if last_summary_idx != -1:
-        previous_summary = messages[last_summary_idx].get('content', '')
+        previous_summary["content"] = messages[last_summary_idx].get('content', '')
         # Everything AFTER the last summary needs to be processed
         to_summarize_messages = messages[last_summary_idx + 1:]
     else:
@@ -206,13 +210,13 @@ def summarize_history(chat_id, model_id, messages, fn):
     new_history_text = "\n".join([f"{m['role']}: {m['content']}" for m in to_summarize_messages])
     compressed = compress_history(chat_id, model_id, new_history_text, fn)
 
-    if not previous_summary:
+    if not previous_summary["content"]:
         return {
             "role": "system",
             "content": f"{compressed}",
             "is_summary": True
         }
-    unied = unite_history(chat_id, model_id, previous_summary, compressed, fn)
+    unied = unite_history(chat_id, model_id, previous_summary["content"], compressed, fn)
     return {
         "role": "system",
         "content": f"{unied}",

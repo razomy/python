@@ -1,4 +1,5 @@
 import time
+import re
 from typing import Iterable
 
 import numpy as np
@@ -11,7 +12,25 @@ from rich.live import Live
 from rich.text import Text
 import uuid
 import subprocess
+import json
+import os
 
+
+# --- NEW FUNCTION ---
+def load_system_prompt(filepath="chats/system.md"):
+    """Reads the system prompt from a file if it exists."""
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    return {'role': 'system', 'content': content}
+        except Exception as e:
+            console.print(f"[red]Error loading system prompt: {e}[/red]")
+    return None
+
+
+# --------------------
 
 def check_appearance():
     """Checks DARK/LIGHT mode of macos."""
@@ -25,8 +44,6 @@ from ai_hugging_face.chat.predict import create_chat_model
 from cache import global_cache_registry
 from razomy.ai_hugging_face.chat.logic.predict import models, BackgroundStreamWorker, cache_predict_stream, \
     summarize_history
-import json
-import os
 
 console = Console()
 bindings = KeyBindings()
@@ -182,8 +199,11 @@ def main():
             return json.load(f)
 
     def perform_compression(model_id, messages, fn):
-        tail = messages[-6:]
-        history_to_compress = messages[:-6]
+        # out_delta = -6
+        # tail = messages[out_delta:]
+        # history_to_compress = messages[:out_delta]
+        tail = []
+        history_to_compress = messages
 
         summary_text = summarize_history(chat_id, model_id, history_to_compress, fn)
 
@@ -195,9 +215,18 @@ def main():
     """Точка входа и главный цикл чата."""
     session = PromptSession(erase_when_done=True)
     chat_id = str(generate_complex_id())
-    model_id = '31_4'
+    model_id = '31_8'
+
+    # --- LOAD SYSTEM PROMPT HERE ---
     messages = []
-    auto_save = True  # Флаг для автоматического сохранения
+    sys_prompt = load_system_prompt()
+    if sys_prompt:
+        messages.append(sys_prompt)
+        console.rule("System:", align="left")
+        console.print(render_user_text(sys_prompt['content']))
+        # ------------------------------
+
+    auto_save = True
 
     def help():
         return Panel(
@@ -213,7 +242,7 @@ def main():
             "write \"help\" to see this message.\n"
             "write \"exit\" for an exit.\n"
             f"chat_id: {chat_id}\n"
-            "Make sure to increase RAM`sudo sysctl iogpu.wired_limit_mb=57344`",
+            "Make sure to increase RAM`sudo sysctl iogpu.wired_limit_mb=58550`",
             title=f"Welcome to the Chatbot({model_id})",
             border_style="green"
         )
@@ -225,9 +254,10 @@ def main():
     while True:
         active_messages = get_active_context(messages)
         count_token = np.sum([len(m['content']) for m in active_messages])
-        console.rule(f"{count_token:,}/You:", align="left")
+        console.rule(f"+{len((messages[-1] or [{"content": ""}])["content"])}={count_token:,}/You:", align="left")
         try:
             user_input = session.prompt("", multiline=True, key_bindings=bindings).strip()
+            user_input = re.sub(r'[ \t]+$', '', user_input, flags=re.MULTILINE)
         except KeyboardInterrupt:
             continue
 
@@ -248,7 +278,11 @@ def main():
             console.print(Panel("[bold cyan]Бот: Clearing! 👋[/bold cyan]", title="Clearing"))
             smart_stream.clear_cache(chat_id)
             chat_id = str(generate_complex_id())
+            # Reset messages but keep system prompt if it exists
             messages = []
+            sys_prompt = load_system_prompt()
+            if sys_prompt:
+                messages.append(sys_prompt)
             continue
 
         if cmd == 'help':
@@ -279,6 +313,9 @@ def main():
                     if msg['role'] == 'user':
                         console.rule("You:", align="left")
                         console.print(render_user_text(msg['content']))
+                    if msg['role'] == 'system':
+                        console.rule("System:", align="left")
+                        console.print(render_user_text(msg['content']))
                     elif msg['role'] == 'model':
                         console.rule("Ai:", align="left")
                         console.print(render_md(msg['content']))
@@ -303,7 +340,7 @@ def main():
         console.print(render_user_text(user_input))
         if auto_save: save_chat(chat_id, messages)
 
-        if count_token > (5 * 15_000) or cmd == 'compress':
+        if count_token > (10 * 15_0000) or cmd == 'compress':
             console.rule(f"+{len(user_input):,}={count_token:,}/System:", align="left")
             console.print(Panel(f"Auto-compressing new {count_token:,} tokens...", title="System"))
             smart_stream.clear_cache(chat_id)  # remove main cache
