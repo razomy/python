@@ -16,6 +16,8 @@ import signal
 
 # doc https://ai.google.dev/gemma/docs/capabilities/thinking
 models = {
+    'qwen38_16': 'mlx-community/Qwen3.8-27B-bf16',
+    'qwen38_8': 'mlx-community/Qwen3.8-27B-8bit',
     # '31_16': 'mlx-community/gemma-4-31b-it-bf16',# too large for this mac
     '31_8': 'mlx-community/gemma-4-31b-it-8bit',
     '31_4': 'mlx-community/gemma-4-31b-it-4bit',

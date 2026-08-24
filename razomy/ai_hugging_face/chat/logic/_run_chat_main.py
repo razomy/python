@@ -215,7 +215,7 @@ def main():
     """Точка входа и главный цикл чата."""
     session = PromptSession(erase_when_done=True)
     chat_id = str(generate_complex_id())
-    model_id = '31_8'
+    model_id = 'qwen38_8'
 
     # --- LOAD SYSTEM PROMPT HERE ---
     messages = []
@@ -316,7 +316,7 @@ def main():
                     if msg['role'] == 'system':
                         console.rule("System:", align="left")
                         console.print(render_user_text(msg['content']))
-                    elif msg['role'] == 'model':
+                    elif msg['role'] == 'assistant':
                         console.rule("Ai:", align="left")
                         console.print(render_md(msg['content']))
                     elif msg.get('is_summary'):
@@ -355,7 +355,7 @@ def main():
             console.rule(f"+{len(user_input):,}={count_token:,}/Ai:", align="left")
             stream_iterator = smart_stream(chat_id, models[model_id], active_messages)
             full_response = stream_ai_response(console, stream_iterator)
-            messages.append({'role': 'model', 'content': full_response})
+            messages.append({'role': 'assistant', 'content': full_response})
             if auto_save: save_chat(chat_id, messages)
         except Exception as e:
             console.print(Panel(f"Error: {e}", border_style="red"))
