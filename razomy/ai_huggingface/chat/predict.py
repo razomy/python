@@ -6,7 +6,7 @@ from mlx_lm import load, stream_generate
 from mlx_lm.models.cache import make_prompt_cache
 
 from razomy.cache import global_cache_registry
-from razomy.ai_hugging_face.chat.log import universal_log
+from razomy.ai_huggingface.chat.log import universal_log
 
 os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 

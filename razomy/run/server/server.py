@@ -15,9 +15,9 @@ app = FastAPI(
 )
 ALLOWED_PACKAGES = [
     "razomy.string_case",
-    "razomy.ai_hugging_face",
-    "razomy.ai_hugging_face.chat.tool.predict",
-    "razomy.ai_hugging_face.chat.logic.predict",
+    "razomy.ai_huggingface",
+    "razomy.ai_huggingface.chat.tool.predict",
+    "razomy.ai_huggingface.chat.logic.predict",
     "razomy.translate_ai"
 ]
 for pkg in ALLOWED_PACKAGES:

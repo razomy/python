@@ -8,16 +8,17 @@ from mlx_lm.sample_utils import make_sampler
 from pyarrow.lib import Queue
 
 from razomy.cache.registry import global_cache_registry
-from razomy.ai_hugging_face.chat.log import universal_log, universal_log
-from razomy.ai_hugging_face.chat.predict import cache_load, AIContext, create_chat_model, Opt
+from razomy.ai_huggingface.chat.log import universal_log, universal_log
+from razomy.ai_huggingface.chat.predict import cache_load, AIContext, create_chat_model, Opt
 from typing import Iterator, Dict, Any
 import multiprocessing
 import signal
 
 # doc https://ai.google.dev/gemma/docs/capabilities/thinking
 models = {
-    'qwen38_16': 'mlx-community/Qwen3.8-27B-bf16',
+    # 'qwen38_16': 'mlx-community/Qwen3.8-27B-bf16',
     'qwen38_8': 'mlx-community/Qwen3.8-27B-8bit',
+    'qwen38_4': 'mlx-community/Qwen3.8-27B-4bit',
     # '31_16': 'mlx-community/gemma-4-31b-it-bf16',# too large for this mac
     '31_8': 'mlx-community/gemma-4-31b-it-8bit',
     '31_4': 'mlx-community/gemma-4-31b-it-4bit',

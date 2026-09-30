@@ -30,7 +30,7 @@ def test_server():
 
 def test_server_ai():
     result = call(
-        'razomy.ai_hugging_face.chat.tool.predict',
+        'razomy.ai_huggingface.chat.tool.predict',
         'cache_predict',
         [
             "1",

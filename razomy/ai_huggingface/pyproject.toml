@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "razomy_ai_hugging_face"
+name = "razomy_ai_huggingface"
 version = "0.0.1-beta.8"
 description = "Shared logging utility"
 readme = "README.md"
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel.sources]
-"" = "razomy/ai_hugging_face"
+"" = "razomy/ai_huggingface"
 
 [tool.hatch.build.targets.wheel]
 include = [

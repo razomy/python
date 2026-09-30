@@ -40,9 +40,9 @@ def check_appearance():
     return bool(p.communicate()[0])
 
 
-from ai_hugging_face.chat.predict import create_chat_model
+from ai_huggingface.chat.predict import create_chat_model
 from cache import global_cache_registry
-from razomy.ai_hugging_face.chat.logic.predict import models, BackgroundStreamWorker, cache_predict_stream, \
+from razomy.ai_huggingface.chat.logic.predict import models, BackgroundStreamWorker, cache_predict_stream, \
     summarize_history
 
 console = Console()

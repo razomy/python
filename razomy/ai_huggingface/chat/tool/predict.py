@@ -4,10 +4,10 @@ from mlx_lm.sample_utils import make_sampler
 from mlx_lm import generate
 from copy import deepcopy
 
-from razomy.ai_hugging_face.chat.logic.predict import models
+from razomy.ai_huggingface.chat.logic.predict import models
 from razomy.cache.registry import global_cache_registry
-from razomy.ai_hugging_face.chat.log import universal_log
-from razomy.ai_hugging_face.chat.predict import AIContext, create_chat_model, Opt
+from razomy.ai_huggingface.chat.log import universal_log
+from razomy.ai_huggingface.chat.predict import AIContext, create_chat_model, Opt
 
 
 @universal_log('Predict')

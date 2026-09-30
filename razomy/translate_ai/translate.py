@@ -1,4 +1,4 @@
-from razomy.ai_hugging_face.chat.predict import cache_load, predict
+from razomy.ai_huggingface.chat.predict import cache_load, predict
 
 models = {
     '4_4': 'mlx-community/translategemma-4b-it-4bit',
